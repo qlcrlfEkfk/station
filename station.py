@@ -2,16 +2,17 @@ import socket
 import time
 from threading import Thread, Lock
 from pymycobot.mycobot import MyCobot
-import serial
+from pymodbus.client import ModbusSerialClient
 
-# RS-485 포트 설정 
-plc_port = serial.Serial(
-    port = 'com10', # 포트 설정
+# Modbus RTU 클라이언트 초기화
+plc_client = ModbusSerialClient(
+    # method='rtu',
+    port='com4',
     baudrate=9600,
-    bytesize=serial.EIGHTBITS,
-    parity=serial.PARITY_NONE,
-    stopbits=serial.STOPBITS_ONE,
-    timeout=1
+    timeout=2,
+    parity='N',
+    stopbits=1,
+    bytesize=8
 )
 
 mc = MyCobot('com3',115200)
@@ -21,22 +22,30 @@ stage_lock = Lock()
 
 server_host = '0.0.0.0'  # PC의 서버 주소
 server_port = 5000        # PC에서 듣는 포트
-agv_ip = '172.30.1.35'   # AGV의 IP 주소
+agv_ip = '172.30.1.14'   # AGV의 IP 주소
 agv_port = 6000          # AGV의 수신 포트
 
 # RS-485로 PLC 신호 전송
-def send_rs485_signal(signal):
+def send_rs485_signal_modbus(register_address, value):
     """
-    RS-485로 PLC 신호 전송
+    Modbus를 통해 PLC에 신호 전송
     Args:
-        signal (int): PLC로 보낼 신호
+        register_address (int): PLC 레지스터 주소
+        value (int): PLC에 쓸 값
     """
     try:
-        data = f"{signal}\n".encode('utf-8')  # 문자열로 변환 후 바이트 인코딩
-        plc_port.write(data)  # ASCII 데이터 전송
-        print(f"PLC에 보내는 ASCII 신호: {data.decode('utf-8').strip()}")
+        if plc_client.connect():
+            write_result = plc_client.write_register(register_address, value, slave=1)
+            if write_result.isError():
+                print(f"D00000 쓰기 실패: {write_result}")
+            else:
+                print(f"D00000에 {register_address}에 {value} 전송 성공")
+        else:
+            print("PLC 연결 실패")
     except Exception as e:
-        print(f"PLC에 보내는 ASCII 신호 에러 메세지: {e}")
+        print(f"PLC 신호 전송 에러 메세지: {e}")
+    finally:
+        plc_client.close()
  
 # 코봇 위치를 이동
 def move_cobot_to_positions(positions, speed=20, delay =5):
@@ -53,7 +62,9 @@ def move_cobot_to_positions(positions, speed=20, delay =5):
 
 #AGV에서 마커 분리 작업 및 컨베이어에 옮기는 작업
 def perform_marker_task():
-    print("starting marker task")
+    print("마커 작업 시작")
+    mc.set_basic_output(1,0) # p3 on
+    time.sleep(4)
     marker_positions = [
         [0, 0, 0, 0, 0, 0],
         [-15.73, -37.52, -75.32, -61.96, 165, -175.16],
@@ -63,18 +74,13 @@ def perform_marker_task():
     ]
     move_cobot_to_positions(marker_positions)
 
-    mc.set_basic_output(1,0) # p3 on
     print("AGV가 마커 분리 그리고 마커가 컨베이어 위에 위치")
-    time.sleep(4)
-
     mc.set_basic_output(1, 1)  # P3 off
-    print("p3 신호 끝")
-    time.sleep(4)
-
+    
 # 사람이 놓든 미끄러져 내려오든 컨베이어에 마커 놓기 완료
 def perform_marker_check():
     print("컨베이어에 마커가 있는지 확인 중...")
-    marker_input = mc.get_basic_input(1) # p3이 코봇에 신호 보내는 중
+    marker_input = mc.get_basic_input(1) 
     if marker_input ==0:
         print("컨베이어에 마커 위치 완료")
         return True
@@ -84,8 +90,9 @@ def perform_marker_check():
 def perform_attachment_task():
     print("부착 작업중...")
        
-    mc.set_basic_output(2,0) # p4
+    mc.set_basic_output(1,0) # p4
     time.sleep(4)
+
     attachment_positions = [
         [0, 0, 0, 0, 0, 0],
         [1.4, -68.2, -23.55, -54.66, 5.62, -30.49],
@@ -95,10 +102,10 @@ def perform_attachment_task():
     ]
     move_cobot_to_positions(attachment_positions)
 
-    mc.set_basic_output(2,1) # p4
     print("부착 작업 완료")
+    mc.set_basic_output(1,1) # p4
     time.sleep(4)
-
+    
 # AGV에 신호 보내기
 def send_signal_to_agv():
     """작업 완료 후 AGV에 신호 전송"""
@@ -117,7 +124,8 @@ def process_tasks():
         with stage_lock:
             # 작업 단계 시작
             if current_stage == 1:
-                send_rs485_signal(485)
+                send_rs485_signal_modbus(77)
+                time.sleep(4)
                 perform_marker_task()
                 current_stage = 2
 
