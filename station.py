@@ -34,10 +34,10 @@ def send_rs485_signal(signal):
     try:
         data = f"{signal}\n".encode('utf-8')  # 문자열로 변환 후 바이트 인코딩
         plc_port.write(data)  # ASCII 데이터 전송
-        print(f"ASCII signal sent to PLC: {data.decode('utf-8').strip()}")
+        print(f"PLC에 보내는 ASCII 신호: {data.decode('utf-8').strip()}")
     except Exception as e:
-        print(f"Error sending ASCII signal to PLC: {e}")
-
+        print(f"PLC에 보내는 ASCII 신호 에러 메세지: {e}")
+ 
 # 코봇 위치를 이동
 def move_cobot_to_positions(positions, speed=20, delay =5):
     """
@@ -64,25 +64,25 @@ def perform_marker_task():
     move_cobot_to_positions(marker_positions)
 
     mc.set_basic_output(1,0) # p3 on
-    print("AGV detached marker and marker is on conveyor")
+    print("AGV가 마커 분리 그리고 마커가 컨베이어 위에 위치")
     time.sleep(4)
 
     mc.set_basic_output(1, 1)  # P3 off
-    print("Signal ends")
+    print("p3 신호 끝")
     time.sleep(4)
 
 # 사람이 놓든 미끄러져 내려오든 컨베이어에 마커 놓기 완료
 def perform_marker_check():
-    print("Checking for marker on conveyor")
+    print("컨베이어에 마커가 있는지 확인 중...")
     marker_input = mc.get_basic_input(1) # p3이 코봇에 신호 보내는 중
     if marker_input ==0:
-        print("Marker detected on conveyor")
+        print("컨베이어에 마커 위치 완료")
         return True
     return False
 
 # 부착 작업
 def perform_attachment_task():
-    print("Starting attachment task")
+    print("부착 작업중...")
        
     mc.set_basic_output(2,0) # p4
     time.sleep(4)
@@ -96,7 +96,7 @@ def perform_attachment_task():
     move_cobot_to_positions(attachment_positions)
 
     mc.set_basic_output(2,1) # p4
-    print("Attachment: Task completed")
+    print("부착 작업 완료")
     time.sleep(4)
 
 # AGV에 신호 보내기
@@ -105,10 +105,10 @@ def send_signal_to_agv():
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as agv_socket:
             agv_socket.connect((agv_ip, agv_port))  # AGV의 IP와 포트
-            agv_socket.sendall(b"Task completed. AGV ready to proceed.")
-            print("Signal sent to AGV.")
+            agv_socket.sendall(b"Task completed. AGV ready to proceed")
+            print("AGV에 신호 전송 완료")
     except Exception as e:
-        print(f"Error sending signal to AGV: {e}")
+        print(f"AGV에 신호 전송 에러 메세지: {e}")
 
 # 작업 스레드
 def process_tasks():
@@ -125,13 +125,13 @@ def process_tasks():
                 if perform_marker_check():
                     current_stage = 3
                 else:
-                    print("Marker not detected. Waiting for signal.")
+                    print("마커 탐지 안됨 신호 기다리는 중")
                     time.sleep(2)
 
             elif current_stage == 3:
                 perform_attachment_task()
                 send_signal_to_agv()
-                print("All tasks completed. Resetting to waiting state")
+                print("모든 작업 완료 초기화 중")
                 current_stage = 0
         time.sleep(0.1)
 
@@ -141,7 +141,7 @@ def start_socket_server():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((server_host, server_port))
         s.listen(1)
-        print("Waiting for AGV signal...")
+        print("AGV 신호 수신 중")
         
         while True:
             conn, addr = s.accept()
@@ -153,7 +153,7 @@ def start_socket_server():
                     with stage_lock:
                         if current_stage ==0:
                             current_stage = 1
-                            print("Task stage updated to 1")
+                            print("작업 스테이지 1로 업데이트")
 
 # 메인 루프
 def main():
@@ -171,10 +171,10 @@ def main():
         server_thread.join()
 
     except KeyboardInterrupt:
-        print("Shutting down system.")
+        print("시스템 닫는 중")
 
     finally:
-        print("System shutting down")
+        print("시스템 닫는 중")
 
 if __name__ == '__main__':
     main()
